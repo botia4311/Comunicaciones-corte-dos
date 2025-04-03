@@ -1,0 +1,115 @@
+import network
+import time
+import math
+from machine import Pin, I2C
+from ssd1306 import SSD1306_I2C
+
+# Configuración de la pantalla OLED
+OLED_WIDTH = 128
+OLED_HEIGHT = 32
+i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=200000)
+oled = SSD1306_I2C(OLED_WIDTH, OLED_HEIGHT, i2c)
+
+# Configuración de LEDs y botón
+led_avanzar = Pin(16, Pin.OUT)  # LED "Avanzar"
+led_proceso = Pin(17, Pin.OUT)  # LED "Midiendo"
+led_estado_wifi = Pin(19, Pin.OUT)  # LED "WiFi"
+boton_inicio = Pin(18, Pin.IN, Pin.PULL_UP)  # Pulsador
+
+# Configuración WiFi
+wifi = network.WLAN(network.STA_IF)
+wifi.active(True)
+SSID = "OPPOReno6Lite"
+PASSWORD = "12345678"
+
+def conectar_wifi():
+    """Intenta conectarse a la red WiFi y parpadea el LED mientras se establece la conexión."""
+    wifi.connect(SSID, PASSWORD)
+    intentos = 0
+    while not wifi.isconnected() and intentos < 10:
+        led_estado_wifi.value(1)
+        time.sleep(0.5)
+        led_estado_wifi.value(0)
+        time.sleep(0.5)
+        intentos += 1
+    if wifi.isconnected():
+        print("Conectado a WiFi - IP:", wifi.ifconfig()[0])
+    else:
+        print("No se pudo conectar al WiFi.")
+
+def calcular_desviacion(datos, media):
+    """Calcula la desviación estándar de un conjunto de datos."""
+    if len(datos) < 2:
+        return 0
+    varianza = sum((dato - media) ** 2 for dato in datos) / (len(datos) - 1)
+    return math.sqrt(varianza)
+
+def mostrar_barras_rssi(rssi):
+    """Dibuja barras de señal en la pantalla OLED sin tapar el texto de RSSI."""
+    num_barras = max(0, min(5, (rssi + 90) // 5))  # Ajustar escala
+    oled.fill(0)
+    for i in range(num_barras):
+        oled.fill_rect(20 + i * 10, 15 - i * 4, 8, i * 4, 1)  # Barras más abajo
+    oled.text(f"RSSI: {rssi} dBm", 2, 25)  # Mantener el texto abajo
+    oled.show()
+
+# Conectar al WiFi
+conectar_wifi()
+
+# Archivo para guardar mediciones
+archivo_rssi = "rssi_measurements.txt"
+
+# Crear archivo con encabezado si no existe
+try:
+    with open(archivo_rssi, "r") as archivo:
+        contenido = archivo.read()
+    if not contenido.startswith("Distancia"):
+        raise OSError
+except OSError:
+    with open(archivo_rssi, "w") as archivo:
+        archivo.write("Distancia\tRSSI\tDesviacion\n")
+
+# Esperar a que se presione el botón antes de comenzar
+print("Presiona el botón para iniciar la medición...")
+while boton_inicio.value() == 1:
+    time.sleep(0.1)
+
+punto_actual = 0
+while wifi.isconnected():
+    print(f"Iniciando medición en {punto_actual}m")
+    led_proceso.value(1)
+    
+    mediciones_rssi = []
+    for _ in range(200):  # 200 muestras (0.1s cada una)
+        rssi = wifi.status('rssi')
+        if rssi is not None:
+            mediciones_rssi.append(rssi)
+            print(rssi)  # Enviar datos al Plotter de Thonny
+        time.sleep(0.1)
+
+    led_proceso.value(0)
+
+    if mediciones_rssi:
+        promedio_rssi = sum(mediciones_rssi) / len(mediciones_rssi)
+        desviacion_rssi = calcular_desviacion(mediciones_rssi, promedio_rssi)
+        print(f"Punto: {punto_actual}m | RSSI: {promedio_rssi:.2f} dBm | Desviación: {desviacion_rssi:.2f} dBm")
+        
+        with open(archivo_rssi, "a") as archivo:
+            archivo.write(f"{punto_actual}\t{promedio_rssi:.2f}\t{desviacion_rssi:.2f}\n")
+        
+        mostrar_barras_rssi(round(promedio_rssi))
+    
+    led_avanzar.value(1)
+    print("Presiona el botón para continuar...")
+    while boton_inicio.value() == 1:
+        time.sleep(0.1)
+    led_avanzar.value(0)
+
+    punto_actual += 1
+    
+    if not wifi.isconnected():
+        print("Conexión WiFi caída. Intentando reconectar...")
+        conectar_wifi()
+        if not wifi.isconnected():
+            print("No se pudo reconectar. Finalizando medición.")
+            break
