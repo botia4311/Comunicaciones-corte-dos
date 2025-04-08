@@ -1,0 +1,52 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Configuración básica
+np.random.seed(42)
+media_duracion = 2   # Duración media de las llamadas
+tiempo_simulacion = 60  # Tiempo total de simulación (en minutos)
+canales_disponibles = 2  # Número de canales fijos
+tasa_llegadas_list = [1, 2, 3, 4, 5, 6, 7]  # Tasa de llegadas a analizar (llamadas/minuto)
+iteraciones = 1000  # Número de simulaciones para promediar los resultados
+
+# Lista para guardar los GoS promedio para cada tasa de llegadas
+gos_values = []
+
+# Simulación para cada tasa de llegadas
+for lambda_llegadas in tasa_llegadas_list:
+    gos_total = 0  # Suma acumulada del GoS para promediar al final
+    for _ in range(iteraciones):
+        reloj = 0
+        ocupados = []
+        llamadas_bloqueadas = 0
+        llamadas_total = 0
+        while reloj < tiempo_simulacion:
+            t_llegada = np.random.exponential(1 / lambda_llegadas)
+            reloj += t_llegada
+            if reloj > tiempo_simulacion:
+                break
+            llamadas_total += 1
+            # Liberar canales ocupados
+            ocupados = [t for t in ocupados if t > reloj]
+            # Si hay canales disponibles
+            if len(ocupados) < canales_disponibles:
+                duracion = np.random.exponential(media_duracion)
+                ocupados.append(reloj + duracion)
+            else:
+                llamadas_bloqueadas += 1
+        gos_total += llamadas_bloqueadas / llamadas_total
+    # Calcular el promedio de GoS para esta tasa de llegadas
+    gos_values.append(gos_total / iteraciones)
+
+# Generar la gráfica
+plt.plot(tasa_llegadas_list, gos_values, marker='o', linestyle='-', color='b')
+plt.title('GoS vs Tasa de Llegadas')
+plt.xlabel('Tasa de Llegadas (llamadas/minuto)')
+plt.ylabel('GoS (Grade of Service)')
+plt.grid()
+plt.xticks(tasa_llegadas_list)
+plt.show()
+
+# Imprimir los valores de GoS obtenidos
+for i, lambda_llegadas in enumerate(tasa_llegadas_list):
+    print(f"Tasa de llegadas: {lambda_llegadas}, GoS promedio: {gos_values[i]:.3f}")
