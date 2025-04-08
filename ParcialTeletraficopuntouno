@@ -1,0 +1,55 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Configuración básica
+np.random.seed(42)
+lambda_llegadas = 3  # Tasa de llegada de llamadas
+media_duracion = 2   # Duración media de las llamadas
+tiempo_simulacion = 60  # Tiempo total de simulación (en minutos)
+canales_list = [2, 3, 4, 5]  # Número de canales a analizar
+iteraciones = 10000  # Aumentar a 10,000 simulaciones
+
+# Almacenar resultados
+gos_values = []
+gos_std = []  # Desviaciones estándar para cada número de canales
+
+# Simulación para cada número de canales
+for canales in canales_list:
+    gos_simulaciones = []
+    for _ in range(iteraciones):
+        reloj = 0
+        ocupados = []
+        llamadas_bloqueadas = 0
+        llamadas_total = 0
+        while reloj < tiempo_simulacion:
+            t_llegada = np.random.exponential(1 / lambda_llegadas)
+            reloj += t_llegada
+            if reloj > tiempo_simulacion:
+                break
+            llamadas_total += 1
+            # Liberar canales ocupados
+            ocupados = [t for t in ocupados if t > reloj]
+            # Si hay canales disponibles
+            if len(ocupados) < canales:
+                duracion = np.random.exponential(media_duracion)
+                ocupados.append(reloj + duracion)
+            else:
+                llamadas_bloqueadas += 1
+        gos_simulaciones.append(llamadas_bloqueadas / llamadas_total)
+    # Calcular el promedio y desviación estándar de GoS para este número de canales
+    gos_values.append(np.mean(gos_simulaciones))
+    gos_std.append(np.std(gos_simulaciones))
+
+# Generar la gráfica
+plt.errorbar(canales_list, gos_values, yerr=gos_std, fmt='o-', color='b', ecolor='r', capsize=5, label="GoS promedio")
+plt.title('GoS vs Número de Canales')
+plt.xlabel('Número de Canales')
+plt.ylabel('GoS (Grade of Service)')
+plt.grid()
+plt.xticks(canales_list)
+plt.legend()
+plt.show()
+
+# Imprimir los valores de GoS obtenidos
+for i, canales in enumerate(canales_list):
+    print(f"Canales: {canales}, GoS promedio: {gos_values[i]:.3f}, Desviación estándar: {gos_std[i]:.3f}")
